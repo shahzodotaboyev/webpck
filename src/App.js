@@ -1,92 +1,133 @@
 import React, { useEffect, useState } from "react";
-import Table from "./Table";
-import Form from "./Form";
-import { getData, deleteData, postData, putData } from "./api";
+import InvoiceTable from "./components/InvoiceTable";
+import InvoiceForm from "./components/InvoiceForm";
+
+const API_URL = "http://localhost:5000/invoices";
 
 function App() {
   const [invoices, setInvoices] = useState([]);
-  const [openForm, setOpenForm] = useState(false);
-  const [edit, setEdit] = useState(false);
-  const [search, setSearch] = useState("");
-  const [initialForm, setForm] = useState({
-    id: "",
-    date: "",
-    customer: "",
-    payableAmount: "",
-    paidAmount: "",
-    due: ""
-  });
+  const [filteredInvoices, setFilteredInvoices] = useState([]);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    getInvoices();
+    fetch(API_URL)
+      .then(res => res.json())
+      .then(data => {
+        setInvoices(data);
+        setFilteredInvoices(data);
+      })
+      .catch(err => console.error("Xato:", err));
   }, []);
 
-  const getInvoices = async () => {
-    let res = await getData();
-    setInvoices(res.data);
+  useEffect(() => {
+    setFilteredInvoices(
+      invoices.filter((invoice) =>
+        invoice.customer.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    );
+  }, [searchTerm, invoices]);
+
+  const addInvoice = (invoice) => {
+    const newInvoice = { 
+      ...invoice, 
+      id: invoices.length ? invoices[invoices.length - 1].id + 1 : 1 
+    };
+
+    fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newInvoice),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        const updatedInvoices = [...invoices, data];
+        setInvoices(updatedInvoices);
+        setFilteredInvoices(updatedInvoices);
+      })
+      .catch((error) => console.error("Error adding invoice:", error));
   };
 
-  const deleteInvoice = async (id) => {
-    await deleteData(id);
-    getInvoices();
+  const deleteInvoice = (id) => {
+    fetch(`${API_URL}/${id}`, { method: "DELETE" })
+      .then(() => {
+        const updatedInvoices = invoices.filter((inv) => inv.id !== id);
+        setInvoices(updatedInvoices);
+        setFilteredInvoices(updatedInvoices);
+      })
+      .catch((error) => console.error("Error deleting invoice:", error));
   };
 
-  const addInvoice = async (invoice) => {
-    let data = { ...invoice };
-    if (edit) {
-      await putData(invoice.id, data);
-      setEdit(false);
-    } else {
-      await postData(data);
-    }
-    getInvoices();
-    setOpenForm(false);
+  const editInvoice = (updatedInvoice) => {
+    fetch(`${API_URL}/${updatedInvoice.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedInvoice),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        const updatedInvoices = invoices.map((inv) => (inv.id === data.id ? data : inv));
+        setInvoices(updatedInvoices);
+        setFilteredInvoices(updatedInvoices);
+        setSelectedInvoice(null);
+        document.body.style.overflow = "auto";
+      })
+      .catch((error) => console.error("Error updating invoice:", error));
   };
 
-  const editInvoice = (data) => {
-    setForm(data);
-    setEdit(true);
-    setOpenForm(true);
+  const openModal = (invoice) => {
+    setSelectedInvoice({ ...invoice, id: invoice.id || null });
+    document.body.style.overflow = "hidden";
   };
 
-  const showForm = () => {
-    console.log("showForm ishladi!");  
-    setOpenForm(true);
-    setEdit(false);
-    setForm({
-      id: "",
-      date: "",
-      customer: "",
-      payableAmount: "",
-      paidAmount: "",
-      due: ""
-    });
+  const closeModal = () => {
+    setSelectedInvoice(null);
+    document.body.style.overflow = "auto";
   };
-
-  const closeForm = () => {
-    setOpenForm(false);
-  };
-
-  const filteredInvoices = invoices.filter((invoice) =>
-    invoice.customer.toLowerCase().includes(search.toLowerCase()) ||
-    invoice.id.toString().toLowerCase().includes(search.toLowerCase())
-  );
 
   return (
-    <div className="container mx-auto p-5 w-1/2">
-      <h2 className="text-blue-600 text-2xl font-bold mb-4">Invoice Management</h2>
-      <button className="bg-blue-600 text-white px-4 py-2 rounded mb-3" onClick={showForm}>
-        Add Invoice
-      </button>
-      <input
-        type="text"
-        className="w-full p-2 border rounded mb-3"
-        placeholder="Search invoices..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Invoice Management</h1>
+
+      <div className="flex justify-between items-center mb-4">
+        <button
+          className="bg-green-500 text-white px-4 py-2 rounded"
+          onClick={() =>
+            openModal({
+              id: "",
+              date: "",
+              customer: "",
+              payable: "",
+              paid: "",
+              due: "",
+            })
+          }
+        >
+          Add Invoice
+        </button>
+        <input
+          type="text"
+          placeholder="Search Customer..."
+          className="border p-2 rounded w-1/3"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      {selectedInvoice && (
+        <InvoiceForm 
+          invoice={selectedInvoice} 
+          addInvoice={addInvoice} 
+          editInvoice={editInvoice} 
+          closeModal={closeModal} 
+        />
+      )}
+
+      <InvoiceTable
+        invoices={filteredInvoices}
+        deleteInvoice={deleteInvoice}
+        openModal={openModal}
       />
-      <Table invoices={filteredInvoices} deleteInvoice={deleteInvoice} editInvoice={editInvoice} />
-      {openForm && <Form closeForm={closeForm} data={initialForm} add={addInvoice} />}
     </div>
   );
 }
